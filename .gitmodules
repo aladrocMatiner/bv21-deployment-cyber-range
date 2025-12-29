@@ -1,0 +1,3 @@
+[submodule "crl/challenges-codex"]
+	path = crl/challenges-codex
+	url = git@github.com:aladrocMatiner/challenges-codex.git
