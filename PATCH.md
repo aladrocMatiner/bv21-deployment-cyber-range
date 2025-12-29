@@ -1,52 +1,42 @@
-# Cambios Aplicados (PATCH)
+# PATCH - Problemas Encontrados y Soluciones
 
-Este documento describe los cambios realizados respecto a la version original del repositorio
-`b21-deployment-cyber-range` y explica el motivo de cada cambio.
+Este documento resume unicamente los problemas que impidieron que CRL funcionara y las acciones
+que fueron necesarias para solucionarlos.
 
-## 1) Importacion del proyecto Cyber Range Lite (CRL)
+## 1) Problema: la imagen oficial no arranca el CLI
 
-Se ha incorporado el codigo del proyecto CRL dentro del repositorio, bajo `crl/`.
-Esto incluye:
-- CLI `crlcli`
-- Codigo Python de CRL/CRLD/PORTD
-- Blueprints, stored-events, docs y utilidades
-- Carpeta `challenges/` con ejemplos publicos
+Sintoma:
+- Al ejecutar `./crlcli init --use-crld`, el contenedor intentaba arrancar OpenRC y generaba errores
+  repetidos de TTY (`/dev/tty1` ... `/dev/tty6`) y no avanzaba.
 
-Motivo:
-- El README del repo original solo enlazaba al proyecto CRL. Para seguir el proceso de instalacion,
-  era necesario disponer del codigo localmente.
+Causa:
+- La imagen `docker.cs.kau.se/csma/cyber-range/crl` no define un `ENTRYPOINT` valido para el CLI.
+  Al no existir entrypoint, se usa el `CMD` de la imagen (python3) sin modulo/argumentos, lo que
+  dispara OpenRC en Alpine y queda bloqueado por falta de TTY.
 
-## 2) Eliminacion de repositorios Git anidados
-
-Se eliminaron las carpetas `.git` de:
-- `crl/.git`
-- `crl/challenges/.git`
-
-Motivo:
-- Evitar subrepositorios dentro del repo principal, lo que dificulta el control de cambios y los commits.
-- Mantener un unico historial en el repositorio `b21-deployment-cyber-range`.
-
-## 3) Ajuste de `crl/crlcli` para evitar errores TTY/OpenRC
-
-Archivo modificado:
-- `crl/crlcli`
-
-Cambio principal (ultima version):
-- El script ahora ejecuta el CLI con:
+Solucion aplicada:
+- Se forzo la ejecucion del CLI con `python3 -m crl` desde `crl/crlcli`:
   `docker compose run --remove-orphans --rm --entrypoint python3 crl -m crl "$@"`
 
-Motivo:
-- La imagen oficial `docker.cs.kau.se/csma/cyber-range/crl` no define un entrypoint correcto y
-  termina intentando arrancar `openrc`, lo que genera errores de TTY (`/dev/ttyX`) en entornos
-  sin TTY real.
-- Forzar `python3 -m crl` dentro del contenedor evita que OpenRC se ejecute y permite que el CLI funcione
-  de forma no interactiva.
+Resultado:
+- El CLI pudo ejecutar `init`, `create` y `start` sin quedarse bloqueado por TTY/OpenRC.
 
-Notas:
-- Este ajuste fue necesario para poder ejecutar `init`, `create` y `start` desde el entorno actual.
-- Para usar la imagen local construida, se recomienda usar `CRL_IMAGE=crl`.
+## 2) Problema: faltaban dependencias en la imagen oficial
 
-## Cambios no persistidos en Git
+Sintoma:
+- Al ejecutar `python3 -m crl`, aparecia `ModuleNotFoundError: No module named 'python_on_whales'`.
 
-Se construyo una imagen local (`crl:latest`) y se levantaron servicios Docker para la instalacion,
-pero esos pasos no generan cambios en el repositorio y no forman parte del commit.
+Causa:
+- La imagen oficial no tenia instalado el paquete `python-on-whales` (ni el resto de dependencias del CLI).
+
+Solucion aplicada:
+- Se construyo una imagen local `crl:latest` usando el `Dockerfile` del repo para instalar dependencias.
+- Se ejecuto el CLI usando `CRL_IMAGE=crl` para forzar el uso de la imagen local.
+
+Resultado:
+- El CLI tuvo acceso a todas las dependencias y los comandos funcionaron.
+
+## Nota operativa
+
+Para repetir el despliegue sin volver a los problemas anteriores:
+- Usar siempre `CRL_IMAGE=crl` al ejecutar `crlcli`.
